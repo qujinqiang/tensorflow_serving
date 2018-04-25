@@ -56,7 +56,8 @@ RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" \
     >>/root/.bazelrc
 ENV BAZELRC /root/.bazelrc
 # Install the most recent bazel release.
-ENV BAZEL_VERSION 0.5.4
+#ENV BAZEL_VERSION 0.5.4
+ENV BAZEL_VERSION 0.12.0
 WORKDIR /
 RUN mkdir /bazel && \
     cd /bazel && \
@@ -88,11 +89,11 @@ RUN mkdir /usr/lib/x86_64-linux-gnu/include/ && \
   ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so.6 /usr/local/cuda/lib64/libcudnn.so.6
 
 # Build TensorFlow Serving and Install it in /usr/local/bin
-#WORKDIR /serving
-#RUN bazel build -c opt --config=cuda \
-#    --crosstool_top=@local_config_cuda//crosstool:toolchain \
-#    tensorflow_serving/model_servers:tensorflow_model_server && \
-#    cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
-#    bazel clean --expunge
+WORKDIR /serving
+RUN bazel build -c opt --config=cuda \
+    --crosstool_top=@local_config_cuda//crosstool:toolchain \
+    tensorflow_serving/model_servers:tensorflow_model_server && \
+    cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
+    bazel clean --expunge
 
 CMD ["/bin/bash"]
