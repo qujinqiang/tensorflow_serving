@@ -88,11 +88,11 @@ RUN mkdir /usr/lib/x86_64-linux-gnu/include/ && \
   ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so.6 /usr/local/cuda/lib64/libcudnn.so.6
 
 # Build TensorFlow Serving and Install it in /usr/local/bin
-WORKDIR /serving
-RUN bazel build -c opt --config=cuda \
-    --crosstool_top=@local_config_cuda//crosstool:toolchain \
-    tensorflow_serving/model_servers:tensorflow_model_server && \
-    cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
-    bazel clean --expunge
+#WORKDIR /serving
+#RUN bazel build -c opt --config=cuda \
+#    --crosstool_top=@local_config_cuda//crosstool:toolchain \
+#    tensorflow_serving/model_servers:tensorflow_model_server && \
+#    cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
+#    bazel clean --expunge
 
 CMD ["/bin/bash"]
