@@ -85,7 +85,7 @@ ENV TF_NEED_CUDA=1 \
 # Download TensorFlow Serving
 
 WORKDIR /tensorflow
-RUN git clone --recurse-submodules https://github.com/tensorflow/serving
+RUN git clone --recurse-submodules -b r1.5 https://github.com/tensorflow/serving
 
 
 # Build TensorFlow Serving
