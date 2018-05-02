@@ -1,103 +1,83 @@
-# docker build --pull -t tf/tensorflow-serving --label 1.6 -f Dockerfile .
-# export TF_SERVING_PORT=9000
-# export TF_SERVING_MODEL_PATH=/tf_models/mymodel
-# export CONTAINER_NAME=tf_serving_1_6
-# CUDA_VISIBLE_DEVICES=0 docker run --runtime=nvidia -it -p $TF_SERVING_PORT:$TF_SERVING_PORT -v $TF_SERVING_MODEL_PATH:/root/tf_model --name $CONTAINER_NAME tf/tensorflow-serving /usr/local/bin/tensorflow_model_server --port=$TF_SERVING_PORT --enable_batching=true --model_base_path=/root/tf_model/
-# docker start -ai $CONTAINER_NAME
-
 FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
 
+ENV TF_CUDA_VERSION=9.0 
+TF_CUDNN_VERSION=7 
+TF_SERVING_BRANCH=r1.7 
+BAZEL_VERSION=0.10.0
 
-# CUDA and CUDNN versions (must match the image source)
-
-ENV TF_CUDA_VERSION=9.0 \
-	TF_CUDNN_VERSION=7 \
-	TF_SERVING_COMMIT=tags/1.6.0 \
-	BAZEL_VERSION=0.11.1
-
-
-# Set up ubuntu packages
-
-RUN apt-get update && apt-get install -y \
-		build-essential \
-		curl \
-		git \
-		libfreetype6-dev \
-		libpng12-dev \
-		libzmq3-dev \
-		mlocate \
-		pkg-config \
-		python-dev \
-		python-numpy \
-		python-pip \
-		software-properties-common \
-		swig \
-		zip \
-		zlib1g-dev \
-		libcurl3-dev \
-		openjdk-8-jdk\
-		openjdk-8-jre-headless \
-		wget \
-		&& \
-	apt-get clean && \
-	rm -rf /var/lib/apt/lists/*
-
-
-# Set up grpc
+RUN apt-get update && apt-get install -y 
+build-essential 
+curl 
+git 
+libfreetype6-dev 
+libpng12-dev 
+libzmq3-dev 
+mlocate 
+pkg-config 
+python-dev 
+python-numpy 
+python-pip 
+software-properties-common 
+swig 
+zip 
+zlib1g-dev 
+libcurl3-dev 
+openjdk-8-jdk
+openjdk-8-jre-headless 
+wget 
+&& 
+apt-get clean && 
+rm -rf /var/lib/apt/lists/*
 
 RUN pip install mock grpcio
 
-
-# Set up Bazel.
-
-# Running bazel inside a `docker build` command causes trouble, cf: https://github.com/bazelbuild/bazel/issues/134
-RUN echo "startup --batch" >>/root/.bazelrc
-# Similarly, we need to workaround sandboxing issues: https://github.com/bazelbuild/bazel/issues/418
-RUN echo "build --spawn_strategy=standalone --genrule_strategy=standalone" >>/root/.bazelrc
 ENV BAZELRC /root/.bazelrc
 
+WORKDIR /root/
+RUN mkdir /bazel && 
+cd /bazel && 
+curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && 
+curl -fSsL -o /bazel/LICENSE.txt https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE && 
+chmod +x bazel-*.sh && 
+./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && 
+cd / && 
+rm -f /bazel/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
-# Install the most recent bazel release.
+ENV TF_NEED_CUDA=1 
+TF_NEED_S3=1 
+TF_CUDA_COMPUTE_CAPABILITIES="3.7" 
+TF_NEED_GCP=1 
+TF_NEED_JEMALLOC=0 
+TF_NEED_HDFS=0 
+TF_NEED_OPENCL=0 
+TF_NEED_MKL=0 
+TF_NEED_VERBS=0 
+TF_NEED_MPI=0 
+TF_NEED_GDR=0 
+TF_ENABLE_XLA=0 
+TF_CUDA_CLANG=0 
+TF_NEED_OPENCL_SYCL=0 
+CUDA_TOOLKIT_PATH=/usr/local/cuda 
+CUDNN_INSTALL_PATH=/usr/lib/x86_64-linux-gnu 
+GCC_HOST_COMPILER_PATH=/usr/bin/gcc 
+PYTHON_BIN_PATH=/usr/bin/python 
+CC_OPT_FLAGS="-march=native" 
+PYTHON_LIB_PATH=/usr/local/lib/python2.7/dist-packages
 
-WORKDIR /bazel
-RUN curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
-	chmod +x bazel-*.sh && \
-	./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
+RUN git clone -b r1.6 https://github.com/tensorflow/serving.git
 
+COPY parameters /root/parameters
 
-# Fix paths so that CUDNN can be found: https://github.com/tensorflow/tensorflow/issues/8264
+RUN cd /root/serving && 
+bazel build -c opt --copt=-mavx --copt=-mavx2 --copt=-mfma --copt=-mfpmath=both --copt=-msse4.2 --config=cuda -k --verbose_failures 
+--crosstool_top=@local_config_cuda//crosstool:toolchain --spawn_strategy=standalone tensorflow_serving/model_servers:tensorflow_model_server
 
-WORKDIR /
-RUN mkdir /usr/lib/x86_64-linux-gnu/include/ && \
-	ln -s /usr/lib/x86_64-linux-gnu/include/cudnn.h /usr/lib/x86_64-linux-gnu/include/cudnn.h && \
-	ln -s /usr/include/cudnn.h /usr/local/cuda/include/cudnn.h && \
-	ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so /usr/local/cuda/lib64/libcudnn.so && \
-	ln -s /usr/lib/x86_64-linux-gnu/libcudnn.so.$TF_CUDNN_VERSION /usr/local/cuda/lib64/libcudnn.so.$TF_CUDNN_VERSION
+RUN ln -s /usr/local/cuda /usr/local/nvidia && 
+ln -s /usr/local/cuda-9.0/targets/x86_64-linux/lib/libcuda.so.1 /usr/local/cuda/lib64/libcuda.so.1
 
+WORKDIR /root/serving
 
-# Enable CUDA support
-
-ENV TF_NEED_CUDA=1 \
-	TF_CUDA_COMPUTE_CAPABILITIES="3.0,3.5,5.2,6.0,6.1" \
-	LD_LIBRARY_PATH=/usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
-
-
-# Download TensorFlow Serving
-
-WORKDIR /tensorflow
-RUN git clone --recurse-submodules -b r1.5 https://github.com/tensorflow/serving
-
-
-# Build TensorFlow Serving
-
-WORKDIR /tensorflow/serving
-RUN bazel build -c opt --copt=-mavx --copt=-mavx2 --copt=-mfma --copt=-mfpmath=both --copt=-msse4.2 --config=cuda -k --verbose_failures --crosstool_top=@local_config_cuda//crosstool:toolchain tensorflow_serving/model_servers:tensorflow_model_server
-
-
-# Install tensorflow_model_server and clean bazel
-
-RUN cp bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server /usr/local/bin/ && \
-	bazel clean --expunge
-
-
-CMD ["/bin/bash"]
+CMD bazel-bin/tensorflow_serving/model_servers/tensorflow_model_server 
+--enable_batching 
+--batching_parameters_file=/root/parameters/parameters.proto 
+--model_config_file=/root/parameters/model_config
